@@ -1,0 +1,23 @@
+This is a Spring Cloud Stream Processor application that loads a Function from
+a JAR file whose location is provided as a Spring Boot property. The classname
+must also be provided. The `application.properties` file has some defaults
+(based on the https://github.com/markfisher/uppercase-function[uppercase-function] sample):
+
+```
+spring.cloud.stream.bindings.input.destination=words
+spring.cloud.stream.bindings.output.destination=uppercasewords
+
+# can instead use other resource location schemes, such as file:///full/path/to.jar
+function.resource=maven://io.spring.sample:uppercase-function:0.0.1-SNAPSHOT
+function.classname=functions.Uppercase
+```
+
+Those values can be overridden in any of the normal Spring Boot ways, such as
+command line args:
+
+```
+java -jar target/spring-cloud-function-stream-processor-1.0.0.BUILD-SNAPSHOT.jar \
+    --spring.cloud.stream.bindings.output.destination=lowercasewords \
+    --function.resource=maven://some.group:lowercase:0.0.1-SNAPSHOT \
+    --function.classname=example.Lowercase
+```
