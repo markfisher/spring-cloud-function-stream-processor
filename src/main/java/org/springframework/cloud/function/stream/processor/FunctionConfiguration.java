@@ -19,6 +19,8 @@ package org.springframework.cloud.function.stream.processor;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +33,8 @@ import org.springframework.cloud.function.support.FunctionUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 import reactor.core.publisher.Flux;
 
@@ -51,20 +55,33 @@ public class FunctionConfiguration {
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public Function<Flux<String>, Flux<String>> function() {
 		URLClassLoader classLoader = null;
+		List<URL> urls = new ArrayList<>();
 		try {
-			URL url = null;
-			String location = this.properties.getResource();
-			if (location.startsWith("maven:")) {
-				MavenResourceLoader mavenResourceLoader = new MavenResourceLoader(new MavenProperties());
-				MavenResource resource = (MavenResource) mavenResourceLoader.getResource(location);
-				url = new URL("file:" + resource.getFile().getAbsolutePath());
+			String[] locations = StringUtils.tokenizeToStringArray(this.properties.getResource(), ",");
+			for (String location : locations) {
+				if (location.startsWith("maven:")) {
+					MavenResourceLoader mavenResourceLoader = new MavenResourceLoader(new MavenProperties());
+					MavenResource resource = (MavenResource) mavenResourceLoader.getResource(location);
+					urls.add(new URL("file:" + resource.getFile().getAbsolutePath()));
+				}
+				else {
+					urls.add(this.contextResourceLoader.getResource(location).getURL());
+				}
 			}
-			else {
-				url = this.contextResourceLoader.getResource(this.properties.getResource()).getURL();
+			classLoader = new URLClassLoader(urls.toArray(new URL[urls.size()]), this.getClass().getClassLoader());
+			String[] classnames = StringUtils.tokenizeToStringArray(this.properties.getClassname(), ",");
+			Assert.isTrue(classnames.length == locations.length, "locations and classnames must have the same number of values");
+			Function function = null;
+			for (int i = 0; i < classnames.length; i++) {
+				Class<?> clazz = classLoader.loadClass(classnames[i]);
+				Function currentFunction = (Function) clazz.newInstance();
+				if (i == 0) {
+					function = currentFunction;
+				}
+				else {
+					function = function.andThen(currentFunction);
+				}
 			}
-			classLoader = new URLClassLoader(new URL[] { url }, this.getClass().getClassLoader());
-			Class<?> clazz = classLoader.loadClass(this.properties.getClassname());
-			Function<?, ?> function = (Function) clazz.newInstance();
 			return (!FunctionUtils.isFluxFunction(function))
 					? new FluxFunction<String, String>((Function<String, String>) function)
 					: (Function<Flux<String>, Flux<String>>) function;
